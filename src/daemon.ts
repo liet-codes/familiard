@@ -16,6 +16,7 @@ import { classify } from './classifier/index.js';
 import { writeEntry, recentEntries } from './journal/index.js';
 import { escalate } from './escalation/index.js';
 import { writePid, clearPid } from './status.js';
+import { walAppend, walRemove, walRecover } from './wal.js';
 
 const MAX_BACKOFF_MS = 5 * 60 * 1000; // 5 minutes max backoff
 
@@ -47,6 +48,9 @@ export async function runDaemon(
     `interval ${config.intervalMs / 1000}s, model ${config.model}`
   );
 
+  // Recover any events from a previous crash
+  const recovered = walRecover(config);
+
   let consecutiveErrors = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -56,10 +60,19 @@ export async function runDaemon(
     try {
       // 1. Flush all watchers
       const allEvents: FamiliarEvent[] = [];
+
+      // Include recovered events on first tick
+      if (recovered.length > 0) {
+        allEvents.push(...recovered.splice(0));
+      }
+
       for (const watcher of watchers) {
         const events = watcher.flush();
         allEvents.push(...events);
       }
+
+      // Write to WAL before classification (durability)
+      walAppend(allEvents, config);
 
       if (allEvents.length > 0) {
         console.log(`[familiard] processing ${allEvents.length} event(s)...`);
@@ -91,6 +104,9 @@ export async function runDaemon(
         }
 
         status.lastClassification = new Date();
+
+        // Remove processed events from WAL
+        walRemove(new Set(allEvents.map((e) => e.id)), config);
 
         // 4. Escalate if needed
         if (toEscalate.length > 0) {
