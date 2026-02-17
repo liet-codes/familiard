@@ -1,10 +1,11 @@
 /**
- * Configuration loading and defaults.
+ * Configuration loading, defaults, and example generation.
  */
 
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import yaml from 'js-yaml';
 import type { FamiliardConfig } from './types.js';
 
 export const CONFIG_DIR = join(homedir(), '.familiard');
@@ -19,7 +20,7 @@ export const DEFAULT_CONFIG: FamiliardConfig = {
   watchers: [],
   escalation: {
     method: 'shell',
-    command: 'echo "familiard escalation: {{summary}}"',
+    command: 'echo',
     contextWindow: 10,
   },
   journal: {
@@ -32,7 +33,40 @@ export function loadConfig(): FamiliardConfig {
     return { ...DEFAULT_CONFIG };
   }
 
-  // TODO: parse YAML config and merge with defaults
-  // For now, return defaults
-  return { ...DEFAULT_CONFIG };
+  try {
+    const raw = readFileSync(CONFIG_PATH, 'utf-8');
+    const parsed = yaml.load(raw) as Partial<FamiliardConfig> | null;
+    if (!parsed || typeof parsed !== 'object') {
+      return { ...DEFAULT_CONFIG };
+    }
+
+    return {
+      model: parsed.model ?? DEFAULT_CONFIG.model,
+      intervalMs: parsed.intervalMs ?? DEFAULT_CONFIG.intervalMs,
+      confidenceThreshold: parsed.confidenceThreshold ?? DEFAULT_CONFIG.confidenceThreshold,
+      watchers: Array.isArray(parsed.watchers) ? parsed.watchers : [],
+      escalation: {
+        method: parsed.escalation?.method ?? DEFAULT_CONFIG.escalation.method,
+        command: parsed.escalation?.command ?? DEFAULT_CONFIG.escalation.command,
+        contextWindow: parsed.escalation?.contextWindow ?? DEFAULT_CONFIG.escalation.contextWindow,
+      },
+      journal: {
+        path: parsed.journal?.path ?? DEFAULT_CONFIG.journal.path,
+      },
+      userContext: parsed.userContext,
+    };
+  } catch (err) {
+    console.error(`[config] failed to parse ${CONFIG_PATH}:`, err);
+    return { ...DEFAULT_CONFIG };
+  }
+}
+
+export function writeConfig(config: FamiliardConfig): void {
+  mkdirSync(CONFIG_DIR, { recursive: true });
+  const content = yaml.dump(config, { lineWidth: 100, noRefs: true });
+  writeFileSync(CONFIG_PATH, content, 'utf-8');
+}
+
+export function configExists(): boolean {
+  return existsSync(CONFIG_PATH);
 }
