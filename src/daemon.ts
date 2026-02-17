@@ -6,6 +6,9 @@
  *   2. If events exist → classify batch
  *   3. Write LOG and ESCALATE events to journal
  *   4. If any ESCALATE events → escalate to cloud agent
+ *
+ * Uses setTimeout chaining (not setInterval) to prevent overlapping runs.
+ * Includes exponential backoff on consecutive errors to avoid escalation storms.
  */
 
 import type { Watcher, FamiliardConfig, DaemonStatus, FamiliarEvent } from './types.js';
@@ -13,6 +16,8 @@ import { classify } from './classifier/index.js';
 import { writeEntry, recentEntries } from './journal/index.js';
 import { escalate } from './escalation/index.js';
 import { writePid, clearPid } from './status.js';
+
+const MAX_BACKOFF_MS = 5 * 60 * 1000; // 5 minutes max backoff
 
 export async function runDaemon(
   watchers: Watcher[],
@@ -42,11 +47,12 @@ export async function runDaemon(
     `interval ${config.intervalMs / 1000}s, model ${config.model}`
   );
 
-  // Main loop with overlap guard
-  let classifying = false;
-  const loop = setInterval(async () => {
-    if (classifying) return;
-    classifying = true;
+  let consecutiveErrors = 0;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  async function tick() {
+    if (!status.running) return;
+
     try {
       // 1. Flush all watchers
       const allEvents: FamiliarEvent[] = [];
@@ -55,63 +61,75 @@ export async function runDaemon(
         allEvents.push(...events);
       }
 
-      if (allEvents.length === 0) return;
+      if (allEvents.length > 0) {
+        console.log(`[familiard] processing ${allEvents.length} event(s)...`);
 
-      console.log(`[familiard] processing ${allEvents.length} event(s)...`);
+        // 2. Classify
+        const result = await classify(
+          { events: allEvents, batchedAt: new Date() },
+          config
+        );
 
-      // 2. Classify
-      const result = await classify(
-        { events: allEvents, batchedAt: new Date() },
-        config
-      );
+        // 3. Journal + collect escalations
+        const toEscalate = [];
 
-      // 3. Journal + collect escalations
-      const toEscalate = [];
+        for (let i = 0; i < allEvents.length; i++) {
+          const event = allEvents[i]!;
+          const classified = result.classifications[i]!;
+          status.eventsProcessed++;
 
-      for (let i = 0; i < allEvents.length; i++) {
-        const event = allEvents[i]!;
-        const classified = result.classifications[i]!;
-        status.eventsProcessed++;
+          if (classified.classification === 'ignore') continue;
 
-        if (classified.classification === 'ignore') continue;
+          writeEntry(event, classified, config);
 
-        // Write to journal (both LOG and ESCALATE)
-        writeEntry(event, classified, config);
+          if (classified.classification === 'log') {
+            status.eventsLogged++;
+          } else if (classified.classification === 'escalate') {
+            status.eventsEscalated++;
+            toEscalate.push(classified);
+          }
+        }
 
-        if (classified.classification === 'log') {
-          status.eventsLogged++;
-        } else if (classified.classification === 'escalate') {
-          status.eventsEscalated++;
-          toEscalate.push(classified);
+        status.lastClassification = new Date();
+
+        // 4. Escalate if needed
+        if (toEscalate.length > 0) {
+          console.log(`[familiard] escalating ${toEscalate.length} event(s)`);
+          const context = recentEntries(config, config.escalation.contextWindow);
+          await escalate(
+            {
+              events: toEscalate,
+              journalContext: context,
+              triggeredAt: new Date(),
+            },
+            config
+          );
         }
       }
 
-      status.lastClassification = new Date();
-
-      // 4. Escalate if needed
-      if (toEscalate.length > 0) {
-        console.log(`[familiard] escalating ${toEscalate.length} event(s)`);
-        const context = recentEntries(config, config.escalation.contextWindow);
-        await escalate(
-          {
-            events: toEscalate,
-            journalContext: context,
-            triggeredAt: new Date(),
-          },
-          config
-        );
-      }
+      // Success — reset backoff
+      consecutiveErrors = 0;
     } catch (err) {
-      console.error('[familiard] loop error:', err);
-    } finally {
-      classifying = false;
+      consecutiveErrors++;
+      console.error(`[familiard] loop error (attempt ${consecutiveErrors}):`, err);
     }
-  }, config.intervalMs);
+
+    // Schedule next tick — with backoff on errors
+    if (status.running) {
+      const backoff = consecutiveErrors > 0
+        ? Math.min(config.intervalMs * Math.pow(2, consecutiveErrors - 1), MAX_BACKOFF_MS)
+        : config.intervalMs;
+      timer = setTimeout(tick, backoff);
+    }
+  }
+
+  // Start the loop
+  timer = setTimeout(tick, config.intervalMs);
 
   // Return cleanup function
   return () => {
     status.running = false;
-    clearInterval(loop);
+    if (timer) clearTimeout(timer);
     for (const cleanup of cleanups) cleanup();
     clearPid();
     console.log(
