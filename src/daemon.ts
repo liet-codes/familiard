@@ -42,8 +42,11 @@ export async function runDaemon(
     `interval ${config.intervalMs / 1000}s, model ${config.model}`
   );
 
-  // Main loop
+  // Main loop with overlap guard
+  let classifying = false;
   const loop = setInterval(async () => {
+    if (classifying) return;
+    classifying = true;
     try {
       // 1. Flush all watchers
       const allEvents: FamiliarEvent[] = [];
@@ -100,6 +103,8 @@ export async function runDaemon(
       }
     } catch (err) {
       console.error('[familiard] loop error:', err);
+    } finally {
+      classifying = false;
     }
   }, config.intervalMs);
 

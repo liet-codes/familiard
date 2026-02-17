@@ -37,6 +37,7 @@ export function createGitWatcher(config: GitWatcherConfig): Watcher {
   const seen = new Map<string, SeenState>();
   const events = config.events ?? ['pr', 'issue'];
   let interval: NodeJS.Timeout | null = null;
+  let polling = false;
 
   async function pollRepo(repo: string) {
     const state = seen.get(repo) ?? { lastPrId: 0, lastIssueId: 0 };
@@ -142,12 +143,18 @@ export function createGitWatcher(config: GitWatcherConfig): Watcher {
         console.log(`[git] watching ${repo} (seeded: PR#${state.lastPrId}, Issue#${state.lastIssueId})`);
       }
 
-      // Start polling
-      interval = setInterval(() => {
-        for (const repo of config.repos) {
-          pollRepo(repo).catch((err) => {
-            console.error(`[git] poll error for ${repo}:`, err);
-          });
+      // Start polling with overlap guard
+      interval = setInterval(async () => {
+        if (polling) return; // skip if previous tick still running
+        polling = true;
+        try {
+          for (const repo of config.repos) {
+            await pollRepo(repo);
+          }
+        } catch (err) {
+          console.error(`[git] poll error:`, err);
+        } finally {
+          polling = false;
         }
       }, config.pollMs ?? 60_000);
 
