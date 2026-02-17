@@ -57,7 +57,7 @@ export function recentEntries(config: FamiliardConfig, limit: number): JournalEn
       if (entries.length >= limit) break;
       // Parse: - HH:MM 🔴 [source/type] summary — *reason*
       const match = line.match(
-        /^- (\d{2}:\d{2}) [🔴📝] \[([^\]]+)\] (.+?) — \*(.+)\*$/
+        /^- (\d{2}:\d{2}) (?:🔴|📝) \[([^\]]+)\] (.+?) — \*(.+)\*$/
       );
       if (match) {
         const [, time, sourceType, summary, reason] = match;
