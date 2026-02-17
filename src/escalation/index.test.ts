@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { escalate } from './index.js';
 import type { EscalationPayload, FamiliardConfig } from '../types.js';
+import * as childProcess from 'node:child_process';
+
+vi.mock('node:child_process', () => ({
+  execFileSync: vi.fn(),
+}));
 
 function makeConfig(overrides?: Partial<FamiliardConfig>): FamiliardConfig {
   return {
@@ -35,13 +40,40 @@ describe('escalate', () => {
     vi.restoreAllMocks();
   });
 
-  it('calls shell command via execFileSync for shell method', async () => {
-    const execFileSync = vi.fn();
-    vi.doMock('node:child_process', () => ({ execFileSync }));
+  it('calls execFileSync with summary as arg for shell method', async () => {
+    await escalate(makePayload(), makeConfig());
 
-    // Re-import to pick up the mock — vitest hoists vi.mock but not vi.doMock
-    // Since escalation uses static import, we test behavior indirectly
-    // by verifying escalate doesn't throw with default 'echo' command
+    expect(childProcess.execFileSync).toHaveBeenCalledWith(
+      'echo',
+      ['Something urgent happened'],
+      expect.objectContaining({
+        timeout: 30_000,
+        env: expect.objectContaining({
+          FAMILIARD_SUMMARY: 'Something urgent happened',
+        }),
+      })
+    );
+  });
+
+  it('uses custom command from config', async () => {
+    const config = makeConfig({
+      escalation: { method: 'shell', command: '/usr/bin/notify', contextWindow: 5 },
+    });
+    await escalate(makePayload(), config);
+
+    expect(childProcess.execFileSync).toHaveBeenCalledWith(
+      '/usr/bin/notify',
+      expect.any(Array),
+      expect.any(Object)
+    );
+  });
+
+  it('handles execFileSync throwing gracefully', async () => {
+    vi.mocked(childProcess.execFileSync).mockImplementation(() => {
+      throw new Error('command not found');
+    });
+
+    // Should not throw
     await expect(escalate(makePayload(), makeConfig())).resolves.toBeUndefined();
   });
 
@@ -67,7 +99,6 @@ describe('escalate', () => {
       escalation: { method: 'openclaw-wake', contextWindow: 5 },
     });
 
-    // Should not throw
     await expect(escalate(makePayload(), config)).resolves.toBeUndefined();
   });
 
