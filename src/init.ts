@@ -5,7 +5,7 @@
  * Philosophy: zero-config for the default case, 60 seconds to running.
  */
 
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { homedir } from 'node:os';
@@ -26,7 +26,7 @@ function check(label: string, fn: () => boolean): boolean {
 
 function commandExists(cmd: string): boolean {
   try {
-    execSync(`which ${cmd}`, { stdio: 'pipe' });
+    execFileSync('which', [cmd], { stdio: 'pipe' });
     return true;
   } catch {
     return false;
@@ -99,8 +99,8 @@ export async function runInit(): Promise<void> {
     }
   } else {
     console.log('\n  ⚠ ollama not found. Install from https://ollama.ai');
-    console.log('  familiard requires ollama for local inference.\n');
-    return;
+    console.log('  familiard requires ollama for local inference.');
+    console.log('  Continuing with config — you can install ollama later.\n');
   }
 
   // Detect cloud agents
@@ -126,11 +126,17 @@ export async function runInit(): Promise<void> {
 
   const customPath = await ask(rl, 'Watch another directory? (path or empty to skip)');
   if (customPath) {
-    config.watchers.push({
-      type: 'filesystem',
-      paths: [customPath],
-      debounceMs: 2000,
-    });
+    // Expand ~ to home directory
+    const expanded = customPath.replace(/^~/, homedir());
+    if (existsSync(expanded)) {
+      config.watchers.push({
+        type: 'filesystem',
+        paths: [expanded],
+        debounceMs: 2000,
+      });
+    } else {
+      console.log(`  ⚠ Directory not found: ${expanded} — skipping`);
+    }
   }
 
   // Git watching

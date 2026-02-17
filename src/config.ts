@@ -40,10 +40,17 @@ export function loadConfig(): FamiliardConfig {
       return { ...DEFAULT_CONFIG };
     }
 
+    // Validate numerics
+    const intervalMs = typeof parsed.intervalMs === 'number' && parsed.intervalMs > 0
+      ? parsed.intervalMs : DEFAULT_CONFIG.intervalMs;
+    const confidenceThreshold = typeof parsed.confidenceThreshold === 'number'
+      && parsed.confidenceThreshold >= 0 && parsed.confidenceThreshold <= 1
+      ? parsed.confidenceThreshold : DEFAULT_CONFIG.confidenceThreshold;
+
     return {
-      model: parsed.model ?? DEFAULT_CONFIG.model,
-      intervalMs: parsed.intervalMs ?? DEFAULT_CONFIG.intervalMs,
-      confidenceThreshold: parsed.confidenceThreshold ?? DEFAULT_CONFIG.confidenceThreshold,
+      model: typeof parsed.model === 'string' ? parsed.model : DEFAULT_CONFIG.model,
+      intervalMs,
+      confidenceThreshold,
       watchers: Array.isArray(parsed.watchers) ? parsed.watchers : [],
       escalation: {
         method: parsed.escalation?.method ?? DEFAULT_CONFIG.escalation.method,
