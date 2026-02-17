@@ -118,11 +118,19 @@ export async function classify(
     };
   }
 
+  const VALID_CLASSIFICATIONS = new Set(['ignore', 'log', 'escalate']);
+
   // Map responses back to events, applying confidence threshold
   const classifications: ClassifiedEvent[] = batch.events.map((event, i) => {
-    const c = parsed[i] ?? {};
+    const c = (i < parsed.length) ? parsed[i]! : {};
     const confidence = typeof c.confidence === 'number' ? c.confidence : 0;
-    let classification = c.classification as ClassifiedEvent['classification'] ?? 'escalate';
+    const rawClassification = typeof c.classification === 'string'
+      ? c.classification.toLowerCase()
+      : 'escalate';
+    let classification: ClassifiedEvent['classification'] =
+      VALID_CLASSIFICATIONS.has(rawClassification)
+        ? (rawClassification as ClassifiedEvent['classification'])
+        : 'escalate'; // unknown classification → escalate (fail-safe)
 
     // Aggressive escalation bias: low confidence → escalate
     if (confidence < config.confidenceThreshold && classification !== 'escalate') {

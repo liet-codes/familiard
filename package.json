@@ -6,6 +6,7 @@
   "bin": {
     "familiard": "./dist/cli.js"
   },
+  "files": ["dist", "README.md"],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/cli.ts",

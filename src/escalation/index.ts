@@ -6,7 +6,7 @@
  * - openclaw-wake: sends a wake event via OpenClaw's cron API
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import type {
   EscalationPayload,
   FamiliardConfig,
@@ -53,12 +53,20 @@ function escalateShell(
   const context = buildContext(payload);
   const summary = payload.events.map((e) => e.escalationSummary ?? e.reason).join('; ');
 
-  const command = (config.escalation.command ?? 'echo "{{summary}}"')
-    .replace('{{summary}}', summary.replace(/"/g, '\\"'))
-    .replace('{{context}}', context.replace(/"/g, '\\"'));
+  // Use execFileSync to avoid shell injection. Command is split into program + args.
+  // The default command uses env vars to pass data safely.
+  const command = config.escalation.command ?? 'echo';
 
   try {
-    execSync(command, { stdio: 'inherit', timeout: 30_000 });
+    execFileSync(command, [summary], {
+      stdio: 'inherit',
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        FAMILIARD_SUMMARY: summary,
+        FAMILIARD_CONTEXT: context,
+      },
+    });
   } catch (err) {
     console.error(`[escalation] shell command failed:`, err);
   }
