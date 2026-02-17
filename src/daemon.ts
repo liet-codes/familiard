@@ -105,10 +105,7 @@ export async function runDaemon(
 
         status.lastClassification = new Date();
 
-        // Remove processed events from WAL
-        walRemove(new Set(allEvents.map((e) => e.id)), config);
-
-        // 4. Escalate if needed
+        // 4. Escalate if needed (before WAL cleanup — crash during escalate should retry)
         if (toEscalate.length > 0) {
           console.log(`[familiard] escalating ${toEscalate.length} event(s)`);
           const context = recentEntries(config, config.escalation.contextWindow);
@@ -121,6 +118,9 @@ export async function runDaemon(
             config
           );
         }
+
+        // Remove processed events from WAL (after escalation succeeds)
+        walRemove(new Set(allEvents.map((e) => e.id)), config);
       }
 
       // Success — reset backoff

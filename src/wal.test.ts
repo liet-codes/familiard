@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { walAppend, walRemove, walRecover } from './wal.js';
@@ -79,7 +79,6 @@ describe('WAL', () => {
     // Inject a corrupt line
     const walFile = join(tempDir, 'events.wal');
     const content = readFileSync(walFile, 'utf-8');
-    const { writeFileSync } = require('fs');
     writeFileSync(walFile, 'NOT JSON\n' + content);
 
     const recovered = walRecover(config);
