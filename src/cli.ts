@@ -73,11 +73,19 @@ async function start() {
 function journal() {
   const config = loadConfig();
   const sinceArg = process.argv.find((a) => a.startsWith('--since='));
-  const limit = 50;
+  const limit = 100;
 
-  const entries = recentEntries(config, limit);
+  let entries = recentEntries(config, limit);
+
+  if (sinceArg) {
+    const sinceDate = new Date(sinceArg.split('=')[1]!);
+    if (!isNaN(sinceDate.getTime())) {
+      entries = entries.filter((e) => e.timestamp >= sinceDate);
+    }
+  }
+
   if (entries.length === 0) {
-    console.log('No journal entries yet.');
+    console.log('No journal entries found.');
     return;
   }
   console.log(formatJournal(entries));
