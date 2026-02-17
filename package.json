@@ -1,0 +1,38 @@
+{
+  "name": "familiard",
+  "version": "0.1.0",
+  "description": "The local inference daemon. Watches your world, wakes your cloud agent only when it matters.",
+  "type": "module",
+  "bin": {
+    "familiard": "./dist/cli.js"
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "agent",
+    "daemon",
+    "local-inference",
+    "ollama",
+    "monitoring",
+    "triage"
+  ],
+  "author": "Liet <liet.speaks@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/liet-codes/familiard"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}
