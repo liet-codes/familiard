@@ -1,0 +1,37 @@
+# familiard configuration
+# Copy to ~/.familiard/config.yaml or run `familiard init`
+
+# Ollama model for classification (must be pulled first)
+model: llama3.1:8b-instruct
+
+# How often to run the classify loop (milliseconds)
+intervalMs: 60000
+
+# Confidence threshold (0-1). Below this, events escalate by default.
+confidenceThreshold: 0.7
+
+# What to watch
+watchers:
+  - type: filesystem
+    paths:
+      - ~/Documents
+    debounceMs: 2000
+
+  - type: git
+    repos:
+      - owner/repo-name
+    events: [pr, issue]
+    pollMs: 60000
+
+# What to do when events need attention
+escalation:
+  method: shell              # or: openclaw-wake
+  command: echo              # shell command — event summary passed as $FAMILIARD_SUMMARY
+  contextWindow: 10          # recent journal entries to include
+
+# Where to write the journal
+journal:
+  path: ~/.familiard/journal
+
+# One-line description of yourself (helps the classifier prioritize)
+# userContext: "Software engineer working on distributed systems"

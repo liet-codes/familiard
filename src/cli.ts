@@ -106,7 +106,7 @@ switch (command) {
     journal();
     break;
   case 'init':
-    console.log('TODO: interactive init wizard');
+    import('./init.js').then((m) => m.runInit());
     break;
   case 'help':
   case '--help':
