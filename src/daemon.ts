@@ -12,6 +12,7 @@ import type { Watcher, FamiliardConfig, DaemonStatus, FamiliarEvent } from './ty
 import { classify } from './classifier/index.js';
 import { writeEntry, recentEntries } from './journal/index.js';
 import { escalate } from './escalation/index.js';
+import { writePid, clearPid } from './status.js';
 
 export async function runDaemon(
   watchers: Watcher[],
@@ -26,6 +27,8 @@ export async function runDaemon(
     eventsLogged: 0,
     watcherCount: watchers.length,
   };
+
+  writePid();
 
   // Start all watchers
   const cleanups: Array<() => void> = [];
@@ -105,6 +108,7 @@ export async function runDaemon(
     status.running = false;
     clearInterval(loop);
     for (const cleanup of cleanups) cleanup();
+    clearPid();
     console.log(
       `[familiard] stopped. Processed ${status.eventsProcessed} events ` +
       `(${status.eventsEscalated} escalated, ${status.eventsLogged} logged).`

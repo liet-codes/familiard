@@ -1,50 +1,51 @@
 /**
- * Git watcher — polls repos for new commits, PRs, and issues using `gh` CLI.
+ * Git watcher — polls repos for new PRs and issues using `gh` CLI.
+ * Uses async exec to avoid blocking the event loop.
  */
 
-import { execSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import type { Watcher, FamiliarEvent } from '../types.js';
 
+const execFileAsync = promisify(execFile);
+
 export interface GitWatcherConfig {
   repos: string[];
-  /** Events to watch for. Defaults to all. */
-  events?: Array<'push' | 'pr' | 'issue'>;
+  /** Events to watch for. Defaults to ['pr', 'issue']. */
+  events?: Array<'pr' | 'issue'>;
   /** Poll interval in ms. Defaults to 60000. */
   pollMs?: number;
 }
 
 interface SeenState {
-  lastCommit?: string;
-  lastPrId?: number;
-  lastIssueId?: number;
+  lastPrId: number;
+  lastIssueId: number;
+}
+
+async function gh(args: string[]): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync('gh', args, { timeout: 15_000 });
+    return stdout.trim();
+  } catch {
+    return null;
+  }
 }
 
 export function createGitWatcher(config: GitWatcherConfig): Watcher {
   const pending: FamiliarEvent[] = [];
   const seen = new Map<string, SeenState>();
-  const events = config.events ?? ['push', 'pr', 'issue'];
+  const events = config.events ?? ['pr', 'issue'];
   let interval: NodeJS.Timeout | null = null;
 
-  function ghExec(args: string): string | null {
-    try {
-      return execSync(`gh ${args}`, {
-        encoding: 'utf-8',
-        timeout: 15_000,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      }).trim();
-    } catch {
-      return null;
-    }
-  }
-
-  function pollRepo(repo: string) {
-    const state = seen.get(repo) ?? {};
+  async function pollRepo(repo: string) {
+    const state = seen.get(repo) ?? { lastPrId: 0, lastIssueId: 0 };
 
     if (events.includes('pr')) {
-      const prs = ghExec(
-        `pr list --repo ${repo} --limit 5 --json number,title,author,createdAt --state open`
-      );
+      const prs = await gh([
+        'pr', 'list', '--repo', repo, '--limit', '5',
+        '--json', 'number,title,author,createdAt', '--state', 'open',
+      ]);
       if (prs) {
         try {
           const list = JSON.parse(prs) as Array<{
@@ -53,28 +54,28 @@ export function createGitWatcher(config: GitWatcherConfig): Watcher {
             author: { login: string };
           }>;
           for (const pr of list) {
-            if (!state.lastPrId || pr.number > state.lastPrId) {
+            if (pr.number > state.lastPrId) {
               pending.push({
                 id: randomUUID(),
                 source: `git/${repo.split('/').pop()}`,
                 type: 'pr_opened',
                 timestamp: new Date(),
                 summary: `PR #${pr.number}: ${pr.title} (by ${pr.author.login})`,
-                raw: { repo, pr },
               });
             }
           }
           if (list.length > 0) {
-            state.lastPrId = Math.max(...list.map((p) => p.number));
+            state.lastPrId = Math.max(state.lastPrId, ...list.map((p) => p.number));
           }
-        } catch { /* skip */ }
+        } catch { /* skip parse errors */ }
       }
     }
 
     if (events.includes('issue')) {
-      const issues = ghExec(
-        `issue list --repo ${repo} --limit 5 --json number,title,author,createdAt --state open`
-      );
+      const issues = await gh([
+        'issue', 'list', '--repo', repo, '--limit', '5',
+        '--json', 'number,title,author,createdAt', '--state', 'open',
+      ]);
       if (issues) {
         try {
           const list = JSON.parse(issues) as Array<{
@@ -83,21 +84,20 @@ export function createGitWatcher(config: GitWatcherConfig): Watcher {
             author: { login: string };
           }>;
           for (const issue of list) {
-            if (!state.lastIssueId || issue.number > state.lastIssueId) {
+            if (issue.number > state.lastIssueId) {
               pending.push({
                 id: randomUUID(),
                 source: `git/${repo.split('/').pop()}`,
                 type: 'issue_opened',
                 timestamp: new Date(),
                 summary: `Issue #${issue.number}: ${issue.title} (by ${issue.author.login})`,
-                raw: { repo, issue },
               });
             }
           }
           if (list.length > 0) {
-            state.lastIssueId = Math.max(...list.map((i) => i.number));
+            state.lastIssueId = Math.max(state.lastIssueId, ...list.map((i) => i.number));
           }
-        } catch { /* skip */ }
+        } catch { /* skip parse errors */ }
       }
     }
 
@@ -108,39 +108,46 @@ export function createGitWatcher(config: GitWatcherConfig): Watcher {
     name: 'git',
 
     async start() {
-      // Initial poll to seed the "seen" state (don't generate events for existing items)
+      // Seed state — get current highest IDs without generating events
       for (const repo of config.repos) {
-        try {
-          // Seed PR state
-          const prs = ghExec(`pr list --repo ${repo} --limit 1 --json number`);
-          if (prs) {
+        const state: SeenState = { lastPrId: 0, lastIssueId: 0 };
+
+        const prs = await gh([
+          'pr', 'list', '--repo', repo, '--limit', '5',
+          '--json', 'number', '--state', 'open',
+        ]);
+        if (prs) {
+          try {
             const list = JSON.parse(prs) as Array<{ number: number }>;
             if (list.length > 0) {
-              const state = seen.get(repo) ?? {};
-              state.lastPrId = list[0]!.number;
-              seen.set(repo, state);
+              state.lastPrId = Math.max(...list.map((p) => p.number));
             }
-          }
-          // Seed issue state
-          const issues = ghExec(`issue list --repo ${repo} --limit 1 --json number`);
-          if (issues) {
+          } catch { /* skip */ }
+        }
+
+        const issues = await gh([
+          'issue', 'list', '--repo', repo, '--limit', '5',
+          '--json', 'number', '--state', 'open',
+        ]);
+        if (issues) {
+          try {
             const list = JSON.parse(issues) as Array<{ number: number }>;
             if (list.length > 0) {
-              const state = seen.get(repo) ?? {};
-              state.lastIssueId = list[0]!.number;
-              seen.set(repo, state);
+              state.lastIssueId = Math.max(...list.map((i) => i.number));
             }
-          }
-          console.log(`[git] watching ${repo}`);
-        } catch {
-          console.error(`[git] failed to seed state for ${repo}`);
+          } catch { /* skip */ }
         }
+
+        seen.set(repo, state);
+        console.log(`[git] watching ${repo} (seeded: PR#${state.lastPrId}, Issue#${state.lastIssueId})`);
       }
 
       // Start polling
       interval = setInterval(() => {
         for (const repo of config.repos) {
-          pollRepo(repo);
+          pollRepo(repo).catch((err) => {
+            console.error(`[git] poll error for ${repo}:`, err);
+          });
         }
       }, config.pollMs ?? 60_000);
 
