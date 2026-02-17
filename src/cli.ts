@@ -29,7 +29,7 @@ function createWatcher(wc: WatcherConfig): Watcher | null {
     case 'git':
       return createGitWatcher({
         repos: wc.repos as string[],
-        events: wc.events as Array<'push' | 'pr' | 'issue'> | undefined,
+        events: wc.events as Array<'pr' | 'issue'> | undefined,
         pollMs: wc.pollMs as number | undefined,
       });
     default:
@@ -107,6 +107,9 @@ switch (command) {
     break;
   case 'init':
     import('./init.js').then((m) => m.runInit());
+    break;
+  case 'status':
+    import('./status.js').then((m) => m.printStatus());
     break;
   case 'help':
   case '--help':

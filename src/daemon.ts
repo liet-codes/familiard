@@ -12,6 +12,7 @@ import type { Watcher, FamiliardConfig, DaemonStatus, FamiliarEvent } from './ty
 import { classify } from './classifier/index.js';
 import { writeEntry, recentEntries } from './journal/index.js';
 import { escalate } from './escalation/index.js';
+import { writePid, clearPid } from './status.js';
 
 export async function runDaemon(
   watchers: Watcher[],
@@ -27,6 +28,8 @@ export async function runDaemon(
     watcherCount: watchers.length,
   };
 
+  writePid();
+
   // Start all watchers
   const cleanups: Array<() => void> = [];
   for (const watcher of watchers) {
@@ -39,8 +42,11 @@ export async function runDaemon(
     `interval ${config.intervalMs / 1000}s, model ${config.model}`
   );
 
-  // Main loop
+  // Main loop with overlap guard
+  let classifying = false;
   const loop = setInterval(async () => {
+    if (classifying) return;
+    classifying = true;
     try {
       // 1. Flush all watchers
       const allEvents: FamiliarEvent[] = [];
@@ -97,6 +103,8 @@ export async function runDaemon(
       }
     } catch (err) {
       console.error('[familiard] loop error:', err);
+    } finally {
+      classifying = false;
     }
   }, config.intervalMs);
 
@@ -105,6 +113,7 @@ export async function runDaemon(
     status.running = false;
     clearInterval(loop);
     for (const cleanup of cleanups) cleanup();
+    clearPid();
     console.log(
       `[familiard] stopped. Processed ${status.eventsProcessed} events ` +
       `(${status.eventsEscalated} escalated, ${status.eventsLogged} logged).`
