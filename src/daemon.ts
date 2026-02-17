@@ -61,18 +61,19 @@ export async function runDaemon(
       // 1. Flush all watchers
       const allEvents: FamiliarEvent[] = [];
 
-      // Include recovered events on first tick
-      if (recovered.length > 0) {
-        allEvents.push(...recovered.splice(0));
-      }
+      // Include recovered events on first tick (already in WAL — don't re-append)
+      const recoveredBatch = recovered.splice(0);
 
       for (const watcher of watchers) {
         const events = watcher.flush();
         allEvents.push(...events);
       }
 
-      // Write to WAL before classification (durability)
+      // Only append NEW events to WAL (recovered ones are already there)
       walAppend(allEvents, config);
+
+      // Now add recovered events to the processing batch
+      allEvents.unshift(...recoveredBatch);
 
       if (allEvents.length > 0) {
         console.log(`[familiard] processing ${allEvents.length} event(s)...`);
