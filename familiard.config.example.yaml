@@ -1,0 +1,49 @@
+# familiard configuration
+# Copy to ~/.familiard/config.yaml and customize
+
+# Ollama model for classification (must be pulled first: ollama pull llama3.1:8b-instruct)
+model: llama3.1:8b-instruct
+
+# How often to check for new events (ms)
+intervalMs: 60000
+
+# Confidence threshold — below this, events escalate by default (0.0-1.0)
+confidenceThreshold: 0.7
+
+# Optional context about the user, injected into classifier prompt
+# userContext: "I'm a software engineer. Prioritize build failures and security alerts."
+
+# Watchers — what to monitor
+watchers:
+  # Watch a Git repo for new PRs, issues, and comments
+  - type: git
+    name: my-project
+    repos:
+      - owner/repo-name
+    events:
+      - pull_request
+      - issues
+      - issue_comment
+
+  # Watch filesystem paths for changes
+  # - type: filesystem
+  #   name: config-files
+  #   paths:
+  #     - /etc/nginx
+  #     - ~/.ssh/authorized_keys
+  #   events:
+  #     - change
+  #     - create
+
+# Escalation — how to wake the cloud agent
+escalation:
+  # 'shell' runs a command; 'openclaw-wake' sends a wake event to OpenClaw
+  method: openclaw-wake
+  # For shell method: command receives summary as first arg + env vars
+  # command: /usr/local/bin/notify
+  # Number of recent journal entries to include as context
+  contextWindow: 10
+
+# Journal — where to write the daily logs
+journal:
+  path: ~/.familiard/journal
