@@ -8,8 +8,9 @@
  * This prevents event loss if the process crashes between flush and classify.
  */
 
-import { appendFileSync, readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, openSync, closeSync } from 'node:fs';
 import { join, dirname } from 'node:path';
+import { randomBytes } from 'node:crypto';
 import type { FamiliarEvent, FamiliardConfig } from './types.js';
 
 function walPath(config: FamiliardConfig): string {
@@ -43,10 +44,16 @@ export function walAppend(events: FamiliarEvent[], config: FamiliardConfig): voi
   const path = walPath(config);
   mkdirSync(dirname(path), { recursive: true });
   const lines = events.map(serialize).join('\n') + '\n';
-  appendFileSync(path, lines);
+  // Use mode 0o600 — WAL may contain sensitive event data
+  const fd = openSync(path, 'a', 0o600);
+  try {
+    appendFileSync(fd, lines);
+  } finally {
+    closeSync(fd);
+  }
 }
 
-/** Remove processed event IDs from the WAL. Call after successful classification. */
+/** Remove processed event IDs from the WAL. Atomic write-to-temp + rename. */
 export function walRemove(processedIds: Set<string>, config: FamiliardConfig): void {
   const path = walPath(config);
   if (!existsSync(path)) return;
@@ -61,7 +68,10 @@ export function walRemove(processedIds: Set<string>, config: FamiliardConfig): v
     })
     .join('\n');
 
-  writeFileSync(path, remaining ? remaining + '\n' : '');
+  // Atomic: write to temp file, then rename (rename is atomic on POSIX)
+  const tmpPath = path + '.tmp.' + randomBytes(4).toString('hex');
+  writeFileSync(tmpPath, remaining ? remaining + '\n' : '', { mode: 0o600 });
+  renameSync(tmpPath, path);
 }
 
 /** Recover unprocessed events from the WAL. Call on startup. */
