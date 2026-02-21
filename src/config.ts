@@ -55,6 +55,10 @@ export function loadConfig(): FamiliardConfig {
       escalation: {
         method: parsed.escalation?.method ?? DEFAULT_CONFIG.escalation.method,
         command: parsed.escalation?.command ?? DEFAULT_CONFIG.escalation.command,
+        url: parsed.escalation?.url,
+        token: parsed.escalation?.token,
+        headers: parsed.escalation?.headers,
+        agentId: parsed.escalation?.agentId,
         contextWindow: parsed.escalation?.contextWindow ?? DEFAULT_CONFIG.escalation.contextWindow,
       },
       journal: {

@@ -81,7 +81,7 @@ describe('escalate', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
 
     const config = makeConfig({
-      escalation: { method: 'openclaw-wake', contextWindow: 5 },
+      escalation: { method: 'openclaw', contextWindow: 5 },
     });
 
     await escalate(makePayload(), config);
@@ -96,7 +96,7 @@ describe('escalate', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
 
     const config = makeConfig({
-      escalation: { method: 'openclaw-wake', contextWindow: 5 },
+      escalation: { method: 'openclaw', contextWindow: 5 },
     });
 
     await expect(escalate(makePayload(), config)).resolves.toBeUndefined();
