@@ -19,6 +19,48 @@ import { writePid, clearPid } from './status.js';
 import { walAppend, walRemove, walRecover } from './wal.js';
 
 const MAX_BACKOFF_MS = 5 * 60 * 1000; // 5 minutes max backoff
+const isTTY = process.stdout.isTTY ?? false;
+
+// ─── TTY progress bar ────────────────────────────────────────────────────────
+
+let countdownTimer: ReturnType<typeof setInterval> | null = null;
+
+function showCountdown(totalMs: number): void {
+  if (countdownTimer) clearInterval(countdownTimer);
+
+  const startedAt = Date.now();
+  const totalSec = Math.round(totalMs / 1000);
+  const barWidth = Math.min(process.stdout.columns ?? 40, 40) - 20;
+
+  const render = () => {
+    const elapsed = Date.now() - startedAt;
+    const remaining = Math.max(0, totalMs - elapsed);
+    const remainSec = Math.ceil(remaining / 1000);
+    const pct = Math.min(elapsed / totalMs, 1);
+    const filled = Math.round(pct * barWidth);
+    const bar = '█'.repeat(filled) + '░'.repeat(barWidth - filled);
+    process.stdout.write(`\r  ${bar} ${totalSec - remainSec}/${totalSec}s `);
+
+    if (remaining <= 0) {
+      clearInterval(countdownTimer!);
+      countdownTimer = null;
+      process.stdout.write('\r' + ' '.repeat((process.stdout.columns ?? 60)) + '\r');
+    }
+  };
+
+  render();
+  countdownTimer = setInterval(render, 250);
+}
+
+function clearCountdown(): void {
+  if (countdownTimer) {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+    if (isTTY) {
+      process.stdout.write('\r' + ' '.repeat((process.stdout.columns ?? 60)) + '\r');
+    }
+  }
+}
 
 export async function runDaemon(
   watchers: Watcher[],
@@ -56,6 +98,8 @@ export async function runDaemon(
 
   async function tick() {
     if (!status.running) return;
+
+    clearCountdown();
 
     try {
       // 1. Flush all watchers
@@ -136,6 +180,10 @@ export async function runDaemon(
       const backoff = consecutiveErrors > 0
         ? Math.min(config.intervalMs * Math.pow(2, consecutiveErrors - 1), MAX_BACKOFF_MS)
         : config.intervalMs;
+
+      if (isTTY) {
+        showCountdown(backoff);
+      }
       timer = setTimeout(tick, backoff);
     }
   }
