@@ -25,11 +25,14 @@ watchers:
 
 # What to do when events need attention
 escalation:
-  method: shell              # shell | http | openclaw-wake
+  method: shell              # shell | http | openclaw
   command: echo              # shell: command — event summary passed as $FAMILIARD_SUMMARY
-  # url: http://192.168.1.30:3001/escalation   # http: POST JSON payload to this URL
+  # url: http://192.168.1.30:18789             # openclaw: gateway URL
+  # token: your-gateway-token                   # openclaw: gateway auth token
+  # agentId: main                               # openclaw: which agent to wake (default: main)
+  # url: https://your-webhook.example.com       # http: POST JSON to any URL
   # headers:                                     # http: optional extra headers
-  #   Authorization: "Bearer ${FAMILIARD_TOKEN}"
+  #   Authorization: "Bearer ..."
   contextWindow: 10          # recent journal entries to include
 
 # Where to write the journal
