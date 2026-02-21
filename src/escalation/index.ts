@@ -163,6 +163,10 @@ async function escalateOpenClaw(
     ],
   };
 
+  // Fire-and-forget: we only care that the gateway accepted the request.
+  // Use AbortController to stop waiting once we get headers back.
+  const controller = new AbortController();
+
   try {
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -171,15 +175,20 @@ async function escalateOpenClaw(
         'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
 
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       console.error(`[escalation] openclaw gateway returned ${res.status}: ${text}`);
     } else {
-      console.log(`[escalation] openclaw agent woken — ${res.status}`);
+      console.log(`[escalation] openclaw agent woken — ${res.status} (not waiting for completion)`);
+      // Abort reading the response body — we don't need the agent's reply
+      controller.abort();
     }
-  } catch (err) {
+  } catch (err: any) {
+    // Ignore AbortError — that's us intentionally disconnecting
+    if (err?.name === 'AbortError') return;
     console.error(`[escalation] openclaw error:`, err);
   }
 }
