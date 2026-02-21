@@ -188,7 +188,10 @@ export async function runDaemon(
     }
   }
 
-  // Start the loop
+  // Start the loop — show countdown immediately
+  if (isTTY) {
+    showCountdown(config.intervalMs);
+  }
   timer = setTimeout(tick, config.intervalMs);
 
   // Return cleanup function
