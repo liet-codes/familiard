@@ -19,10 +19,32 @@ familiard runs a small local model (via [ollama](https://ollama.ai)) that contin
 
 ## Quick Start
 
+### From npm (once published)
+
 ```bash
 npm install -g familiard
 familiard init    # detects ollama, asks what to watch, writes config
 familiard start   # starts the daemon
+```
+
+### From source (local development)
+
+```bash
+git clone https://github.com/liet-codes/familiard.git
+cd familiard
+npm install
+
+# Run directly (no build step needed):
+npm run dev -- init       # set up config
+npm run dev -- start      # start the daemon
+npm run dev -- status     # check status
+npm run dev -- journal    # view recent journal
+
+# Or build and link globally:
+npm run build
+npm link
+familiard init
+familiard start
 ```
 
 ## What It Does
