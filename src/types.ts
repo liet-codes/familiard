@@ -72,7 +72,7 @@ export interface JournalEntry {
 
 // ─── Escalation ───────────────────────────────────────────────────────────────
 
-export type EscalationMethod = 'shell' | 'http' | 'openclaw-wake';
+export type EscalationMethod = 'shell' | 'http' | 'openclaw';
 
 export interface EscalationPayload {
   /** Events being escalated. */
@@ -118,10 +118,14 @@ export interface FamiliardConfig {
     method: EscalationMethod;
     /** Shell command template for method: 'shell'. */
     command?: string;
-    /** Target URL for method: 'http'. */
+    /** Target URL for method: 'http' or 'openclaw' (gateway base URL). */
     url?: string;
     /** Extra headers for method: 'http'. */
     headers?: Record<string, string>;
+    /** Gateway auth token for method: 'openclaw'. */
+    token?: string;
+    /** Agent ID for method: 'openclaw' (default: 'main'). */
+    agentId?: string;
     /** Number of recent journal entries to include as context. */
     contextWindow: number;
   };

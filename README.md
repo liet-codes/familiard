@@ -75,6 +75,52 @@ $ familiard journal
 - **Zero config to start**: `familiard init` detects your environment and sets up sensible defaults.
 - **The classifier is the product**: anyone can write a cron job that polls. The local model *understanding* whether an event matters is the differentiator.
 
+## Escalation Methods
+
+### OpenClaw (recommended)
+
+Wake your cloud agent directly via OpenClaw's Gateway API. No polling, pure push.
+
+```yaml
+escalation:
+  method: openclaw
+  url: http://192.168.1.30:18789   # your gateway URL
+  token: your-gateway-token         # gateway auth token
+  agentId: main                     # which agent to wake
+  contextWindow: 10
+```
+
+**Prerequisites:** Enable the chat completions endpoint on your gateway:
+```bash
+openclaw config set gateway.http.endpoints.chatCompletions.enabled true
+```
+
+Your agent receives escalations as messages — it can notify you, take action, or handle it autonomously.
+
+### HTTP (generic webhook)
+
+POST JSON to any URL. Works with Discord webhooks, ntfy.sh, Home Assistant, or any custom receiver.
+
+```yaml
+escalation:
+  method: http
+  url: https://your-endpoint.example.com/webhook
+  headers:
+    Authorization: "Bearer ..."
+  contextWindow: 10
+```
+
+### Shell (local command)
+
+Run any local command. Event data passed via environment variables.
+
+```yaml
+escalation:
+  method: shell
+  command: notify-send    # or any command
+  contextWindow: 10
+```
+
 ## Architecture
 
 ```

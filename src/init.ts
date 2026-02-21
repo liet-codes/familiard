@@ -153,13 +153,22 @@ export async function runInit(): Promise<void> {
   }
 
   // Escalation
-  if (hasOpenClaw) {
-    const useOpenClaw = await confirm(rl, 'Escalate to OpenClaw when events need attention?');
-    if (useOpenClaw) {
-      config.escalation = {
-        method: 'openclaw-wake',
-        contextWindow: 10,
-      };
+  const useOpenClaw = await confirm(rl, 'Escalate to an OpenClaw agent when events need attention?');
+  if (useOpenClaw) {
+    const gatewayUrl = await ask(rl, 'OpenClaw gateway URL', 'http://localhost:18789');
+    const token = await ask(rl, 'Gateway auth token');
+    const agentId = await ask(rl, 'Agent ID', 'main');
+
+    config.escalation = {
+      method: 'openclaw',
+      url: gatewayUrl,
+      token: token || undefined,
+      agentId,
+      contextWindow: 10,
+    };
+
+    if (!token) {
+      console.log('  ⚠ No token provided — set escalation.token in config later');
     }
   }
 

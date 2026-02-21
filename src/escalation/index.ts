@@ -2,8 +2,9 @@
  * Escalation — wakes a cloud agent when the classifier says something needs attention.
  *
  * Methods:
- * - shell: runs a command with templated context
- * - openclaw-wake: sends a wake event via OpenClaw's cron API
+ * - shell:    runs a local command with event context in env vars
+ * - http:     POST JSON to any webhook URL (generic)
+ * - openclaw: wake an OpenClaw agent via the Gateway's OpenAI-compatible HTTP API
  */
 
 import { execFileSync } from 'node:child_process';
@@ -25,7 +26,7 @@ export async function escalate(
       return escalateShell(payload, config);
     case 'http':
       return escalateHttp(payload, config);
-    case 'openclaw-wake':
+    case 'openclaw':
       return escalateOpenClaw(payload, config);
     default:
       console.error(`[escalation] unknown method: ${method}`);
@@ -48,15 +49,26 @@ ${eventSummaries}
 ${journal}`;
 }
 
+function buildMessage(payload: EscalationPayload): string {
+  const summaries = payload.events
+    .map((e) => e.escalationSummary ?? e.reason)
+    .join('\n• ');
+
+  const journal = payload.journalContext.length > 0
+    ? `\n\nRecent journal:\n${formatJournal(payload.journalContext)}`
+    : '';
+
+  return `🔴 familiard escalation\n\n• ${summaries}${journal}`;
+}
+
+// ─── Shell ────────────────────────────────────────────────────────────────────
+
 function escalateShell(
   payload: EscalationPayload,
   config: FamiliardConfig
 ): void {
   const context = buildContext(payload);
   const summary = payload.events.map((e) => e.escalationSummary ?? e.reason).join('; ');
-
-  // Use execFileSync to avoid shell injection. Command is split into program + args.
-  // The default command uses env vars to pass data safely.
   const command = config.escalation.command ?? 'echo';
 
   try {
@@ -73,6 +85,8 @@ function escalateShell(
     console.error(`[escalation] shell command failed:`, err);
   }
 }
+
+// ─── HTTP (generic webhook) ──────────────────────────────────────────────────
 
 async function escalateHttp(
   payload: EscalationPayload,
@@ -119,28 +133,53 @@ async function escalateHttp(
   }
 }
 
+// ─── OpenClaw (Gateway chat completions API) ────────────────────────────────
+
 async function escalateOpenClaw(
   payload: EscalationPayload,
-  _config: FamiliardConfig
+  config: FamiliardConfig
 ): Promise<void> {
-  // OpenClaw wake via cron API
-  // TODO: discover OpenClaw gateway port and auth token from ~/.openclaw/openclaw.json
-  const context = buildContext(payload);
+  const gatewayUrl = config.escalation.url;
+  const token = config.escalation.token;
+
+  if (!gatewayUrl) {
+    console.error('[escalation] openclaw method requires escalation.url (gateway URL, e.g. http://192.168.1.30:18789)');
+    return;
+  }
+  if (!token) {
+    console.error('[escalation] openclaw method requires escalation.token (gateway auth token)');
+    return;
+  }
+
+  const endpoint = `${gatewayUrl.replace(/\/$/, '')}/v1/chat/completions`;
+  const message = buildMessage(payload);
+  const agentId = config.escalation.agentId ?? 'main';
+
+  const body = {
+    model: `openclaw:${agentId}`,
+    user: 'familiard',  // stable session key
+    messages: [
+      { role: 'user', content: message },
+    ],
+  };
 
   try {
-    const res = await fetch('http://localhost:18789/api/cron/wake', {
+    const res = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text: context,
-        mode: 'now',
-      }),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
-      console.error(`[escalation] openclaw wake failed: ${res.status}`);
+      const text = await res.text().catch(() => '');
+      console.error(`[escalation] openclaw gateway returned ${res.status}: ${text}`);
+    } else {
+      console.log(`[escalation] openclaw agent woken — ${res.status}`);
     }
   } catch (err) {
-    console.error(`[escalation] openclaw wake error:`, err);
+    console.error(`[escalation] openclaw error:`, err);
   }
 }
