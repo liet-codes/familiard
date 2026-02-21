@@ -23,6 +23,8 @@ export async function escalate(
   switch (method) {
     case 'shell':
       return escalateShell(payload, config);
+    case 'http':
+      return escalateHttp(payload, config);
     case 'openclaw-wake':
       return escalateOpenClaw(payload, config);
     default:
@@ -69,6 +71,51 @@ function escalateShell(
     });
   } catch (err) {
     console.error(`[escalation] shell command failed:`, err);
+  }
+}
+
+async function escalateHttp(
+  payload: EscalationPayload,
+  config: FamiliardConfig
+): Promise<void> {
+  const url = config.escalation.url;
+  if (!url) {
+    console.error('[escalation] http method requires escalation.url in config');
+    return;
+  }
+
+  const body = {
+    source: 'familiard',
+    timestamp: payload.triggeredAt.toISOString(),
+    events: payload.events.map((e) => ({
+      eventId: e.eventId,
+      classification: e.classification,
+      reason: e.reason,
+      summary: e.escalationSummary ?? e.reason,
+      confidence: e.confidence,
+    })),
+    context: payload.journalContext.length > 0
+      ? formatJournal(payload.journalContext)
+      : null,
+  };
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...config.escalation.headers,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      console.error(`[escalation] http POST to ${url} failed: ${res.status}`);
+    } else {
+      console.log(`[escalation] http POST to ${url} — ${res.status}`);
+    }
+  } catch (err) {
+    console.error(`[escalation] http error:`, err);
   }
 }
 

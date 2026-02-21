@@ -25,8 +25,11 @@ watchers:
 
 # What to do when events need attention
 escalation:
-  method: shell              # or: openclaw-wake
-  command: echo              # shell command — event summary passed as $FAMILIARD_SUMMARY
+  method: shell              # shell | http | openclaw-wake
+  command: echo              # shell: command — event summary passed as $FAMILIARD_SUMMARY
+  # url: http://192.168.1.30:3001/escalation   # http: POST JSON payload to this URL
+  # headers:                                     # http: optional extra headers
+  #   Authorization: "Bearer ${FAMILIARD_TOKEN}"
   contextWindow: 10          # recent journal entries to include
 
 # Where to write the journal
